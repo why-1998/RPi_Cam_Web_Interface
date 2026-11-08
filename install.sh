@@ -56,11 +56,17 @@ elif [ $VERSION -eq 11 ]; then
    sudo mkdir -p /opt/vc/bin
 elif [ $VERSION -eq 12 ]; then
    phpversion=8.2
-#following is done by enable legacy camera in updates raspi-config
-#   sudo sed -i 's/^camera_auto_detect=1/#camera_auto_detect=1/g' /boot/config.txt
-#   sudo grep -qxF 'start_x=1' /boot/config.txt || sudo sed -i '$ a start_x=1' /boot/config.txt
-#   sudo grep -qxF 'gpu_mem=128' /boot/config.txt || sudo sed -i '$ a gpu_mem=128' /boot/config.txt
+   sudo sed -i 's/^camera_auto_detect=1/#camera_auto_detect=0/g' /boot/firmware/config.txt
+   sudo grep -qxF 'start_x=1' /boot/firmware/config.txt || sudo sed -i '$ a start_x=1' /boot/firmware/config.txt
+   sudo grep -qxF 'gpu_mem=128' /boot/firmware/config.txt || sudo sed -i '$ a gpu_mem=128' /boot/firmware/config.txt
    sudo mkdir -p /opt/vc/bin
+elif [ $VERSION -eq 13 ]; then
+   phpversion=8.4
+   sudo sed -i 's/^camera_auto_detect=1/#camera_auto_detect=0/g' /boot/firmware/config.txt
+   sudo grep -qxF 'start_x=1' /boot/firmware/config.txt || sudo sed -i '$ a start_x=1' /boot/firmware/config.txt
+   sudo grep -qxF 'gpu_mem=128' /boot/firmware/config.txt || sudo sed -i '$ a gpu_mem=128' /boot/firmware/config.txt
+   sudo mkdir -p /opt/vc/bin
+   cd $(dirname $(readlink -f $0))
 else
    phpversion=7.0
 fi
@@ -324,8 +330,13 @@ sudo awk '!NF {if (++n <= 1) print; next}; {n=0;print}' /etc/rc.local > "$tmpfil
 if [ "$autostart" == "yes" ]; then
    if ! grep -Fq '#START RASPIMJPEG SECTION' /etc/rc.local; then
       sudo sed -i '/exit 0/d' /etc/rc.local
+      if ! grep "#!/bin/sh -e" /etc/rc.local; then
+         echo "#!/bin/sh -e" | sudo tee /etc/rc.local
+      fi
       sudo bash -c "cat >> /etc/rc.local" << EOF
 #START RASPIMJPEG SECTION
+modprobe bcm2835_v4l2
+[ ! -d /var/log/apache2 ] && mkdir /var/log/apache2 && systemctl start apache2
 mkdir -p /dev/shm/mjpeg
 chown www-data:www-data /dev/shm/mjpeg
 chmod 777 /dev/shm/mjpeg
@@ -373,16 +384,19 @@ else
    phpv=php$phpversion
 fi
 
+dpkg --add-architecture armhf
+dpkg -i opt-vc-bin.deb
+apt update
 if [ "$webserver" == "apache" ]; then
-   sudo apt-get install -y apache2 $phpv $phpv-cli libapache2-mod-$phpv gpac motion zip gstreamer1.0-tools
+   for i in apache2 $phpv $phpv-cli libapache2-mod-$phpv gpac zip gstreamer1.0-tools:armhf; do sudo apt-get install -y $i; done
    if [ $? -ne 0 ]; then exit; fi
    fn_apache
 elif [ "$webserver" == "nginx" ]; then
-   sudo apt-get install -y nginx $phpv-fpm $phpv-cli $phpv-common php-apcu apache2-utils gpac motion zip gstreamer1.0-tools
+   for i in nginx $phpv-fpm $phpv-cli $phpv-common php-apcu apache2-utils gpac motion zip gstreamer1.0-tools:armhf; do sudo apt-get install -y $i; done
    if [ $? -ne 0 ]; then exit; fi
    fn_nginx
 elif [ "$webserver" == "lighttpd" ]; then
-   sudo apt-get install -y  lighttpd $phpv-cli $phpv-common $phpv-cgi $phpv gpac motion zip gstreamer1.0-tools
+   for i in lighttpd $phpv-cli $phpv-common $phpv-cgi $phpv gpac motion zip gstreamer1.0-tools:armhf; do sudo apt-get install -y $i; done
    if [ $? -ne 0 ]; then exit; fi
    fn_lighttpd
 fi
